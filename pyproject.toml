@@ -1,0 +1,20 @@
+[project]
+name = "documentintelligenceapi"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "asyncpg>=0.30.0",
+    "fastapi>=0.141.1",
+    "file>=0.3.0",
+    "langchain>=1.4.1",
+    "langchain-ollama>=1.1.0",
+    "langchain-text-splitters>=1.1.2",
+    "pgvector>=0.5.0",
+    "pydantic-settings>=2.0.0",
+    "pymupdf4llm>=1.28.2",
+    "python-dotenv>=1.2.3",
+    "python-multipart>=0.0.32",
+    "sentence-transformers>=6.1.0",
+    "sqlalchemy>=2.0.0",
+    "uvicorn>=0.53.0",
+]
