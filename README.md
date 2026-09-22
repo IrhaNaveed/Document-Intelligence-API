@@ -4,10 +4,6 @@
 
 A FastAPI service that turns PDFs into a queryable knowledge base. Upload a document and it's automatically extracted, chunked, embedded, and indexed in Postgres with `pgvector`. Then ask questions in natural language across one or many uploaded documents, and get back an LLM-generated answer with exact page-level citations for every source it used.
 
-## Demo / Screenshot
-
-_Add a screenshot or terminal recording of an upload + `/api/ask` request/response here._
-
 ## Tech Stack
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
