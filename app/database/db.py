@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Index, Integer, String, Text, select, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Computed, DateTime, Index, Integer, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -30,6 +30,11 @@ class Chunk(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    content_tsv: Mapped[str] = mapped_column(
+        TSVECTOR,
+        Computed("to_tsvector('english', content)", persisted=True),
+        deferred=True,
+    )
 
     __table_args__ = (
         Index(
@@ -39,6 +44,7 @@ class Chunk(Base):
             postgresql_with={"m": 16, "ef_construction": 64},
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
+        Index("ix_chunks_content_tsv", "content_tsv", postgresql_using="gin"),
     )
 
 
@@ -46,6 +52,14 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(
+            "ALTER TABLE chunks ADD COLUMN IF NOT EXISTS content_tsv tsvector "
+            "GENERATED ALWAYS AS (to_tsvector('english', content)) STORED"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_chunks_content_tsv "
+            "ON chunks USING gin (content_tsv)"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
