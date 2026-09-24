@@ -44,11 +44,6 @@ def _chunk_document(file_bytes: bytes, extension: str) -> tuple[list[str], list[
         for chunk in splitter.split_text(text):
             chunks.append(chunk)
             chunk_pages.append(None)
-    elif extension == "doc":
-        raise HTTPException(
-            status_code=415,
-            detail="Legacy .doc files are not supported. Please convert to .docx or PDF.",
-        )
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported file extension: {extension}")
 
@@ -64,9 +59,6 @@ async def readFile(file, extension, session):
             raise HTTPException(status_code=400, detail="No extractable text found in the file.")
 
         embeddings = embedding_model.encode(chunks)
-        # Replace any previous version of this document. Deleting only after
-        # parsing/embedding succeeded, in the same transaction as the inserts,
-        # means a failed re-upload leaves the old version untouched.
         await session.execute(delete(Chunk).where(Chunk.document_name == file.filename))
         for chunk, page_number, embedding in zip(chunks, chunk_pages, embeddings):
             db_chunk = Chunk(

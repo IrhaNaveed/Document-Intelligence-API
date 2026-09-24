@@ -1,6 +1,7 @@
 import asyncio
 import os
 
+import torch
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
 from sqlalchemy import select
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.db import Chunk
 from app.helper.embeddings import embedding_model
+from app.helper.reranker import reranker_model
 
 llm = ChatOllama(
     model=os.getenv("OLLAMA_MODEL", "llama3.2"),
@@ -28,6 +30,9 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 
+RERANK_CANDIDATE_FACTOR = 4
+
+
 async def search_chunks(
     session: AsyncSession,
     question: str,
@@ -37,13 +42,25 @@ async def search_chunks(
     query_embedding = await asyncio.to_thread(embedding_model.encode, question)
 
     distance = Chunk.embedding.cosine_distance(query_embedding.tolist())
-    stmt = select(Chunk, distance.label("distance")).order_by(distance).limit(top_k)
-    print(stmt)
+    stmt = select(Chunk).order_by(distance).limit(top_k * RERANK_CANDIDATE_FACTOR)
     if document_names:
         stmt = stmt.where(Chunk.document_name.in_(document_names))
 
     result = await session.execute(stmt)
-    return result.all()
+    return result.scalars().all()
+
+
+async def rerank_chunks(question: str, chunks: list[Chunk], top_k: int):
+    if not chunks:
+        return []
+    ranked = await asyncio.to_thread(
+        reranker_model.rank,
+        question,
+        [chunk.content for chunk in chunks],
+        top_k=top_k,
+        activation_fn=torch.nn.Sigmoid(),
+    )
+    return [(chunks[r["corpus_id"]], float(r["score"])) for r in ranked]
 
 
 async def answer_question(
@@ -52,7 +69,8 @@ async def answer_question(
     top_k: int,
     document_names: list[str] | None,
 ):
-    rows = await search_chunks(session, question, top_k, document_names)
+    candidates = await search_chunks(session, question, top_k, document_names)
+    rows = await rerank_chunks(question, candidates, top_k)
     if not rows:
         return "No documents were found to answer from.", []
 
@@ -67,8 +85,8 @@ async def answer_question(
             "document": chunk.document_name,
             "page": chunk.chunk_metadata.get("page"),
             "content": chunk.content,
-            "score": round(1 - dist, 4),  # cosine similarity
+            "score": round(score, 4),
         }
-        for chunk, dist in rows
+        for chunk, score in rows
     ]
     return response.content, sources
