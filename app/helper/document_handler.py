@@ -3,6 +3,7 @@ import tempfile
 import pymupdf4llm
 from fastapi import HTTPException
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from sqlalchemy import delete
 
 from app.database.db import Chunk
 from app.helper.docx_handler import extract_docx_text
@@ -63,6 +64,10 @@ async def readFile(file, extension, session):
             raise HTTPException(status_code=400, detail="No extractable text found in the file.")
 
         embeddings = embedding_model.encode(chunks)
+        # Replace any previous version of this document. Deleting only after
+        # parsing/embedding succeeded, in the same transaction as the inserts,
+        # means a failed re-upload leaves the old version untouched.
+        await session.execute(delete(Chunk).where(Chunk.document_name == file.filename))
         for chunk, page_number, embedding in zip(chunks, chunk_pages, embeddings):
             db_chunk = Chunk(
                 document_name=file.filename,
