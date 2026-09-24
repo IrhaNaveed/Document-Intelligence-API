@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common import FILE_EXTENSIONS
 from app.database.db import get_session
-from app.helper.pdf_handler import readFile
+from app.helper.document_handler import readFile
 from app.helper.rag import answer_question
 from app.router.filehandling.schema import AskRequest, AskResponse
 
@@ -13,10 +13,10 @@ router = APIRouter(prefix="/api")
 
 @router.post("/fileUpload")
 async def fileUpload(file: UploadFile, session: AsyncSession = Depends(get_session)):
-    extension = file.filename.split(".")[-1]
+    extension = file.filename.rsplit(".", 1)[-1].lower()
     if extension not in FILE_EXTENSIONS:
         raise HTTPException(status_code=400, detail="File extension not supported")
-    await readFile(file, session)
+    await readFile(file, extension, session)
     return file.filename
 
 
