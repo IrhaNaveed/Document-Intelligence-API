@@ -4,7 +4,8 @@ import os
 import torch
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
-from sqlalchemy import select
+from sqlalchemy import Text, cast, func, select
+from sqlalchemy.dialects.postgresql import TSQUERY
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.db import Chunk
@@ -31,6 +32,60 @@ prompt = ChatPromptTemplate.from_messages([
 
 
 RERANK_CANDIDATE_FACTOR = 4
+RRF_K = 60
+
+
+async def vector_search(
+    session: AsyncSession,
+    question: str,
+    limit: int,
+    document_names: list[str] | None,
+) -> list[Chunk]:
+    query_embedding = await asyncio.to_thread(embedding_model.encode, question)
+
+    distance = Chunk.embedding.cosine_distance(query_embedding.tolist())
+    stmt = select(Chunk).order_by(distance).limit(limit)
+    if document_names:
+        stmt = stmt.where(Chunk.document_name.in_(document_names))
+
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def keyword_search(
+    session: AsyncSession,
+    question: str,
+    limit: int,
+    document_names: list[str] | None,
+) -> list[Chunk]:
+    tsquery = cast(
+        func.replace(cast(func.plainto_tsquery("english", question), Text), "&", "|"),
+        TSQUERY,
+    )
+    stmt = (
+        select(Chunk)
+        .where(Chunk.content_tsv.op("@@")(tsquery))
+        .order_by(func.ts_rank_cd(Chunk.content_tsv, tsquery).desc())
+        .limit(limit)
+    )
+    if document_names:
+        stmt = stmt.where(Chunk.document_name.in_(document_names))
+
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+def reciprocal_rank_fusion(rankings: list[list[Chunk]], limit: int) -> list[Chunk]:
+    """Merge ranked lists by summing 1 / (RRF_K + rank) for each chunk.
+    """
+    scores: dict[int, float] = {}
+    chunks: dict[int, Chunk] = {}
+    for ranking in rankings:
+        for rank, chunk in enumerate(ranking, start=1):
+            scores[chunk.id] = scores.get(chunk.id, 0.0) + 1 / (RRF_K + rank)
+            chunks[chunk.id] = chunk
+    best = sorted(scores, key=scores.__getitem__, reverse=True)[:limit]
+    return [chunks[chunk_id] for chunk_id in best]
 
 
 async def search_chunks(
@@ -38,16 +93,11 @@ async def search_chunks(
     question: str,
     top_k: int,
     document_names: list[str] | None,
-):
-    query_embedding = await asyncio.to_thread(embedding_model.encode, question)
-
-    distance = Chunk.embedding.cosine_distance(query_embedding.tolist())
-    stmt = select(Chunk).order_by(distance).limit(top_k * RERANK_CANDIDATE_FACTOR)
-    if document_names:
-        stmt = stmt.where(Chunk.document_name.in_(document_names))
-
-    result = await session.execute(stmt)
-    return result.scalars().all()
+) -> list[Chunk]:
+    limit = top_k * RERANK_CANDIDATE_FACTOR
+    semantic = await vector_search(session, question, limit, document_names)
+    keyword = await keyword_search(session, question, limit, document_names)
+    return reciprocal_rank_fusion([semantic, keyword], limit)
 
 
 async def rerank_chunks(question: str, chunks: list[Chunk], top_k: int):
