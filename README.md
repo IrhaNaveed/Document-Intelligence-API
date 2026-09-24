@@ -193,4 +193,3 @@ curl -X POST http://localhost:8000/api/ask \
 
 - Legacy `.doc` files (the old binary Word format) aren't parsed — only `.docx` and PDF are supported. Convert `.doc` files to `.docx` or PDF before uploading.
 - `.docx` chunks have no page number, since Word doesn't store pagination in the file (it's computed by the renderer at display/print time). Their citations include the document name only.
-- Re-uploading a file with the same name adds duplicate chunks rather than replacing the previous version.
