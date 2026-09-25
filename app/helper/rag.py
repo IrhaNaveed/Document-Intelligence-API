@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.db import Chunk
 from app.helper.embeddings import embedding_model
 from app.helper.reranker import reranker_model
+from app.common import NO_DOCUMENTS_MESSAGE
 
 llm = ChatOllama(
     model=os.getenv("OLLAMA_MODEL", "llama3.2"),
@@ -113,24 +114,18 @@ async def rerank_chunks(question: str, chunks: list[Chunk], top_k: int):
     return [(chunks[r["corpus_id"]], float(r["score"])) for r in ranked]
 
 
-async def answer_question(
+async def retrieve(
     session: AsyncSession,
     question: str,
     top_k: int,
     document_names: list[str] | None,
-):
+) -> list[tuple[Chunk, float]]:
     candidates = await search_chunks(session, question, top_k, document_names)
-    rows = await rerank_chunks(question, candidates, top_k)
-    if not rows:
-        return "No documents were found to answer from.", []
+    return await rerank_chunks(question, candidates, top_k)
 
-    context = "\n\n".join(
-        f"[{chunk.document_name}, page {chunk.chunk_metadata.get('page', '?')}]\n{chunk.content}"
-        for chunk, _ in rows
-    )
-    response = await (prompt | llm).ainvoke({"context": context, "question": question})
 
-    sources = [
+def format_sources(rows: list[tuple[Chunk, float]]) -> list[dict]:
+    return [
         {
             "document": chunk.document_name,
             "page": chunk.chunk_metadata.get("page"),
@@ -139,4 +134,32 @@ async def answer_question(
         }
         for chunk, score in rows
     ]
-    return response.content, sources
+
+
+def _build_inputs(question: str, rows: list[tuple[Chunk, float]]) -> dict:
+    context = "\n\n".join(
+        f"[{chunk.document_name}, page {chunk.chunk_metadata.get('page', '?')}]\n{chunk.content}"
+        for chunk, _ in rows
+    )
+    return {"context": context, "question": question}
+
+
+async def answer_question(
+    session: AsyncSession,
+    question: str,
+    top_k: int,
+    document_names: list[str] | None,
+):
+    rows = await retrieve(session, question, top_k, document_names)
+    if not rows:
+        return NO_DOCUMENTS_MESSAGE, []
+
+    response = await (prompt | llm).ainvoke(_build_inputs(question, rows))
+    return response.content, format_sources(rows)
+
+
+async def stream_answer_tokens(question: str, rows: list[tuple[Chunk, float]]):
+    """Yield the LLM's answer piece by piece as it is generated."""
+    async for piece in (prompt | llm).astream(_build_inputs(question, rows)):
+        if piece.content:
+            yield piece.content
