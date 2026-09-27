@@ -41,11 +41,17 @@ async def vector_search(
     question: str,
     limit: int,
     document_names: list[str] | None,
+    owner_id: int,
 ) -> list[Chunk]:
     query_embedding = await asyncio.to_thread(embedding_model.encode, question)
 
     distance = Chunk.embedding.cosine_distance(query_embedding.tolist())
-    stmt = select(Chunk).order_by(distance).limit(limit)
+    stmt = (
+        select(Chunk)
+        .where(Chunk.owner_id == owner_id)
+        .order_by(distance)
+        .limit(limit)
+    )
     if document_names:
         stmt = stmt.where(Chunk.document_name.in_(document_names))
 
@@ -58,6 +64,7 @@ async def keyword_search(
     question: str,
     limit: int,
     document_names: list[str] | None,
+    owner_id: int,
 ) -> list[Chunk]:
     tsquery = cast(
         func.replace(cast(func.plainto_tsquery("english", question), Text), "&", "|"),
@@ -65,7 +72,7 @@ async def keyword_search(
     )
     stmt = (
         select(Chunk)
-        .where(Chunk.content_tsv.op("@@")(tsquery))
+        .where(Chunk.content_tsv.op("@@")(tsquery), Chunk.owner_id == owner_id)
         .order_by(func.ts_rank_cd(Chunk.content_tsv, tsquery).desc())
         .limit(limit)
     )
@@ -94,10 +101,11 @@ async def search_chunks(
     question: str,
     top_k: int,
     document_names: list[str] | None,
+    owner_id: int,
 ) -> list[Chunk]:
     limit = top_k * RERANK_CANDIDATE_FACTOR
-    semantic = await vector_search(session, question, limit, document_names)
-    keyword = await keyword_search(session, question, limit, document_names)
+    semantic = await vector_search(session, question, limit, document_names, owner_id)
+    keyword = await keyword_search(session, question, limit, document_names, owner_id)
     return reciprocal_rank_fusion([semantic, keyword], limit)
 
 
@@ -119,8 +127,9 @@ async def retrieve(
     question: str,
     top_k: int,
     document_names: list[str] | None,
+    owner_id: int,
 ) -> list[tuple[Chunk, float]]:
-    candidates = await search_chunks(session, question, top_k, document_names)
+    candidates = await search_chunks(session, question, top_k, document_names, owner_id)
     return await rerank_chunks(question, candidates, top_k)
 
 
@@ -149,8 +158,9 @@ async def answer_question(
     question: str,
     top_k: int,
     document_names: list[str] | None,
+    owner_id: int,
 ):
-    rows = await retrieve(session, question, top_k, document_names)
+    rows = await retrieve(session, question, top_k, document_names, owner_id)
     if not rows:
         return NO_DOCUMENTS_MESSAGE, []
 

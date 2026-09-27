@@ -6,8 +6,9 @@ from httpx import ConnectError
 from ollama import ResponseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.dependencies import get_current_user
 from app.common import FILE_EXTENSIONS
-from app.database.db import get_session
+from app.database.db import User, get_session
 from app.helper.document_handler import readFile
 from app.helper.rag import (
     NO_DOCUMENTS_MESSAGE,
@@ -32,19 +33,27 @@ def _sse(event: str, data) -> str:
 
 
 @router.post("/fileUpload")
-async def fileUpload(file: UploadFile, session: AsyncSession = Depends(get_session)):
+async def fileUpload(
+    file: UploadFile,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
     extension = file.filename.rsplit(".", 1)[-1].lower()
     if extension not in FILE_EXTENSIONS:
         raise HTTPException(status_code=400, detail="File extension not supported")
-    await readFile(file, extension, session)
+    await readFile(file, extension, session, current_user.id)
     return file.filename
 
 
 @router.post("/ask", response_model=AskResponse)
-async def ask(body: AskRequest, session: AsyncSession = Depends(get_session)):
+async def ask(
+    body: AskRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
     try:
         answer, sources = await answer_question(
-            session, body.question, body.top_k, body.document_names
+            session, body.question, body.top_k, body.document_names, current_user.id
         )
     except (ResponseError, ConnectError) as e:
         raise _ollama_error(e)
@@ -52,14 +61,20 @@ async def ask(body: AskRequest, session: AsyncSession = Depends(get_session)):
 
 
 @router.post("/ask/stream")
-async def ask_stream(body: AskRequest, session: AsyncSession = Depends(get_session)):
+async def ask_stream(
+    body: AskRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
     """Same as /ask, but streams the answer as Server-Sent Events.
 
     Events, in order: `sources` (the retrieved chunks, known before generation
     starts), then one `token` per piece of the answer, then `done`. If Ollama
     fails mid-answer an `error` event is sent instead of `done`.
     """
-    rows = await retrieve(session, body.question, body.top_k, body.document_names)
+    rows = await retrieve(
+        session, body.question, body.top_k, body.document_names, current_user.id
+    )
     tokens = stream_answer_tokens(body.question, rows)
     try:
         first = await anext(tokens, None) if rows else None

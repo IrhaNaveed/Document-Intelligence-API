@@ -50,7 +50,7 @@ def _chunk_document(file_bytes: bytes, extension: str) -> tuple[list[str], list[
     return chunks, chunk_pages
 
 
-async def readFile(file, extension, session):
+async def readFile(file, extension, session, owner_id):
     try:
         file_bytes = await file.read()
 
@@ -59,9 +59,14 @@ async def readFile(file, extension, session):
             raise HTTPException(status_code=400, detail="No extractable text found in the file.")
 
         embeddings = embedding_model.encode(chunks)
-        await session.execute(delete(Chunk).where(Chunk.document_name == file.filename))
+        await session.execute(
+            delete(Chunk).where(
+                Chunk.document_name == file.filename, Chunk.owner_id == owner_id
+            )
+        )
         for chunk, page_number, embedding in zip(chunks, chunk_pages, embeddings):
             db_chunk = Chunk(
+                owner_id=owner_id,
                 document_name=file.filename,
                 content=chunk,
                 embedding=embedding.tolist(),

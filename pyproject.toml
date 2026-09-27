@@ -4,6 +4,8 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "asyncpg>=0.30.0",
+    "bcrypt>=5.0.0",
+    "email-validator>=2.3.0",
     "fastapi>=0.141.1",
     "file>=0.3.0",
     "langchain>=1.4.1",
@@ -11,6 +13,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "pgvector>=0.5.0",
     "pydantic-settings>=2.0.0",
+    "pyjwt>=2.15.0",
     "pymupdf4llm>=1.28.2",
     "python-docx>=1.2.0",
     "python-dotenv>=1.2.3",

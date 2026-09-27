@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from app.router.filehandling.endpoint import router as file_router
+from app.router.auth.endpoint import router as auth_router
 from app.database.db import init_db
 
 @asynccontextmanager
@@ -11,6 +12,7 @@ async def create_app(app: FastAPI):
 
 app = FastAPI(lifespan=create_app)
 
+app.include_router(auth_router)
 app.include_router(file_router)
 @app.get("/")
 async def healthcheck():
