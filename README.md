@@ -1,5 +1,8 @@
 # Document Intelligence API
 
+![Backend CI](https://github.com/IrhaNaveed/Document-Intelligence-API/actions/workflows/backend-ci.yml/badge.svg)
+![Frontend CI](https://github.com/IrhaNaveed/Document-Intelligence-API/actions/workflows/frontend-ci.yml/badge.svg)
+
 ## What it does
 
 A full-stack app that turns PDFs, Word documents, and Excel spreadsheets into a queryable knowledge base. Create an account, upload documents, and ask questions about them in natural language — a FastAPI backend extracts, chunks, embeds, and indexes each file in Postgres with `pgvector`, then answers questions with an LLM-generated response grounded in exact page-level citations (where the file format has pages). Every user's documents and chat history are private to their account. A React frontend (`document_agent/`) provides login/registration, a ChatGPT-style chat with conversation history, and a document upload/management view.
@@ -424,6 +427,20 @@ Chat streaming is implemented with a hand-rolled `fetch` + `ReadableStream` read
 
 Run it with `npm run dev` (see [Frontend setup](#frontend-setup)); it expects the backend at the URL in `VITE_API_BASE_URL` (`.env`), defaulting to `http://localhost:8000`.
 
+## Continuous Integration
+
+Two GitHub Actions workflows run on every push and PR to `main` (`.github/workflows/`), each scoped to the part of the repo it touches so an unrelated change doesn't trigger the other:
+
+- **`backend-ci.yml`** (paths: `app/**`, `main.py`, `pyproject.toml`, `uv.lock`) — installs dependencies with `uv sync --locked` (fails if `uv.lock` is out of sync with `pyproject.toml`), byte-compiles every module to catch syntax errors early, spins up a real `pgvector/pgvector` Postgres service container and runs `init_db()` against it to verify the schema (tables, extensions, indexes) actually creates cleanly, then imports the full FastAPI app to catch import-time errors across every router. There's no test suite yet, so this is a set of smoke tests rather than unit tests — see [Known limitations](#known-limitations).
+- **`frontend-ci.yml`** (path: `document_agent/**`) — installs with `npm ci`, then runs `npm run lint` (ESLint) and `npm run build` (`vite build`).
+
+`backend-ci.yml` needs two [repository secrets](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions) set under **Settings → Secrets and variables → Actions** before it will run successfully on a fork or a fresh clone of this repo — both are CI-only values, unrelated to your real `.env`:
+
+| Secret | Used for |
+|---|---|
+| `JWT_SECRET_KEY` | Signs tokens issued during the app-import smoke test |
+| `CI_POSTGRES_PASSWORD` | Password for the ephemeral `pgvector/pgvector` service container (exists only for the job's duration) |
+
 ## Known limitations
 
 - Legacy `.doc` and `.xls` files (the old binary Word/Excel formats) aren't parsed — only `.docx`, `.xlsx`, and PDF are supported. Convert to the modern format before uploading.
@@ -434,3 +451,4 @@ Run it with `npm run dev` (see [Frontend setup](#frontend-setup)); it expects th
 - No password reset or email verification flow — registration and login only.
 - The chat UI renders answers as plain text (no Markdown rendering), even though the LLM may format citations or lists with Markdown syntax.
 - The backend's CORS policy is hardcoded to `http://localhost:5173`; deploying the frontend elsewhere requires updating `main.py`.
+- There's no automated test suite (backend or frontend) yet — CI runs smoke checks (schema creation, app import, lint, build) rather than unit/integration tests. See [Continuous Integration](#continuous-integration).

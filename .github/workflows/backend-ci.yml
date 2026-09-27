@@ -1,0 +1,88 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "main.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "main.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
+          POSTGRES_DB: document_intelligence_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_URL: postgresql+asyncpg://postgres:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/document_intelligence_ci
+      EMBEDDING_DIM: "384"
+      JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+      JWT_EXPIRE_MINUTES: "60"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Cache embedding/reranker models
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/torch
+          key: hf-models-all-MiniLM-L6-v2-ms-marco-MiniLM-L-6-v2
+
+      - name: Compile check (catches syntax errors)
+        run: uv run python -m compileall -q app main.py
+
+      - name: Verify database schema initializes
+        run: |
+          uv run python -c "
+          import asyncio
+          from app.database.db import init_db
+
+          asyncio.run(init_db())
+          print('Database schema initialized successfully.')
+          "
+
+      - name: Import the full application (downloads embedding/reranker models)
+        run: |
+          uv run python -c "
+          import main
+
+          assert main.app is not None
+          print('Application imported successfully.')
+          "
