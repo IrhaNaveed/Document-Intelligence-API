@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import { getApiErrorMessage } from '../../api/errors'
 import { useUploadDocument } from '../../features/documents/documentsHooks'
 
-const ALLOWED_EXTENSIONS = ['pdf', 'docx']
+const ALLOWED_EXTENSIONS = ['pdf', 'docx', 'xlsx']
 
 export default function DocumentUploadButton() {
   const inputRef = useRef(null)
@@ -18,7 +18,7 @@ export default function DocumentUploadButton() {
 
     const extension = file.name.split('.').pop()?.toLowerCase()
     if (!ALLOWED_EXTENSIONS.includes(extension)) {
-      setError('Only PDF and DOCX files are supported.')
+      setError('Only PDF, DOCX, and XLSX files are supported.')
       return
     }
 
@@ -33,7 +33,7 @@ export default function DocumentUploadButton() {
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf,.docx"
+        accept=".pdf,.docx,.xlsx"
         className="hidden"
         onChange={handleFileChange}
       />

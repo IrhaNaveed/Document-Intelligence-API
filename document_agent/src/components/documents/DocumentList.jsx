@@ -34,7 +34,7 @@ export default function DocumentList() {
         <FileText className="h-8 w-8 text-slate-400" />
         <p className="font-medium text-slate-700 dark:text-slate-300">No documents yet</p>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Upload a PDF or DOCX to start asking questions about it.
+          Upload a PDF, DOCX, or XLSX to start asking questions about it.
         </p>
       </div>
     )

@@ -8,6 +8,7 @@ from sqlalchemy import delete
 from app.database.db import Chunk
 from app.helper.docx_handler import extract_docx_text
 from app.helper.embeddings import embedding_model
+from app.helper.excel_handler import extract_excel_text
 
 splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
@@ -25,9 +26,9 @@ def _extract_pdf_pages(file_bytes: bytes) -> list[dict]:
 def _chunk_document(file_bytes: bytes, extension: str) -> tuple[list[str], list[int | None]]:
     """Split a document into chunks, paired with the page each one came from.
 
-    PDFs carry real page numbers. Word documents don't store pagination at
-    all (it's computed by the renderer), so every docx chunk gets page=None
-    rather than a guessed number.
+    PDFs carry real page numbers. Word and Excel files don't store pagination
+    at all (it's computed by the renderer, or doesn't apply), so every docx
+    or xlsx chunk gets page=None rather than a guessed number.
     """
     chunks: list[str] = []
     chunk_pages: list[int | None] = []
@@ -41,6 +42,11 @@ def _chunk_document(file_bytes: bytes, extension: str) -> tuple[list[str], list[
                 chunk_pages.append(page_number)
     elif extension == "docx":
         text = extract_docx_text(file_bytes)
+        for chunk in splitter.split_text(text):
+            chunks.append(chunk)
+            chunk_pages.append(None)
+    elif extension == "xlsx":
+        text = extract_excel_text(file_bytes)
         for chunk in splitter.split_text(text):
             chunks.append(chunk)
             chunk_pages.append(None)

@@ -8,7 +8,7 @@ export default function DocumentsPage() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Your documents</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Upload PDFs or Word documents to make them searchable in the chat.
+            Upload PDFs, Word documents, or Excel spreadsheets to make them searchable in the chat.
           </p>
         </div>
         <DocumentUploadButton />

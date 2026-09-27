@@ -2,7 +2,7 @@
 
 ## What it does
 
-A full-stack app that turns PDFs and Word documents into a queryable knowledge base. Create an account, upload documents, and ask questions about them in natural language — a FastAPI backend extracts, chunks, embeds, and indexes each file in Postgres with `pgvector`, then answers questions with an LLM-generated response grounded in exact page-level citations. Every user's documents and chat history are private to their account. A React frontend (`document_agent/`) provides login/registration, a ChatGPT-style chat with conversation history, and a document upload/management view.
+A full-stack app that turns PDFs, Word documents, and Excel spreadsheets into a queryable knowledge base. Create an account, upload documents, and ask questions about them in natural language — a FastAPI backend extracts, chunks, embeds, and indexes each file in Postgres with `pgvector`, then answers questions with an LLM-generated response grounded in exact page-level citations (where the file format has pages). Every user's documents and chat history are private to their account. A React frontend (`document_agent/`) provides login/registration, a ChatGPT-style chat with conversation history, and a document upload/management view.
 
 ## Tech Stack
 
@@ -28,8 +28,8 @@ A full-stack app that turns PDFs and Word documents into a queryable knowledge b
 ## Features
 
 - **Accounts & per-user isolation** — JWT-based email/password auth. Every uploaded document and every conversation belongs to one account and is invisible to everyone else.
-- **Automatic ingestion** — upload a PDF or Word (`.docx`) file and it's parsed, split into overlapping chunks, embedded, and stored in one request.
-- **Page-aware chunking** — PDF chunks keep a reference to the page they came from, so answers can cite exactly where they came from. (Word files have no real page numbers to attribute — see [Known limitations](#known-limitations).)
+- **Automatic ingestion** — upload a PDF, Word (`.docx`), or Excel (`.xlsx`) file and it's parsed, split into overlapping chunks, embedded, and stored in one request. Excel sheets are extracted row by row (formula cells use their last-calculated value), grouped under a `## Sheet: <name>` heading per sheet.
+- **Page-aware chunking** — PDF chunks keep a reference to the page they came from, so answers can cite exactly where they came from. (Word and Excel files have no real page numbers to attribute — see [Known limitations](#known-limitations).)
 - **Hybrid search** — every question runs two searches: semantic (`pgvector` cosine similarity on embeddings, so it works on meaning) and keyword (Postgres full-text search, so exact terms like names, IDs, and acronyms are not missed). The two result lists are merged with Reciprocal Rank Fusion.
 - **Cross-encoder reranking** — hybrid search fetches a wider candidate pool, then a cross-encoder re-scores each chunk against the question so the most relevant ones reach the LLM.
 - **Multi-document Q&A** — search across every uploaded document, or scope a question to a specific set of filenames.
@@ -237,7 +237,7 @@ curl -X POST http://localhost:8000/api/fileUpload \
 "invoice.pdf"
 ```
 
-Supported extensions: `pdf`, `docx`. Legacy `.doc` files are rejected with a `400` asking for a `.docx` or PDF conversion — see [Known limitations](#known-limitations). Re-uploading a file with the same name replaces its previously stored chunks.
+Supported extensions: `pdf`, `docx`, `xlsx`. Legacy `.doc` and `.xls` files are rejected — see [Known limitations](#known-limitations). Re-uploading a file with the same name replaces its previously stored chunks.
 
 ### `GET /api/documents`
 
@@ -389,7 +389,7 @@ Returns `204 No Content`.
 
 **Auth.** Registration hashes the password with `bcrypt` and stores the user; login verifies it and returns a JWT signed with `JWT_SECRET_KEY`, embedding the user's id as `sub` with an expiry. Every other endpoint decodes that token via a FastAPI dependency to resolve the current user, and every query is filtered by that user's id, so accounts are fully isolated from each other.
 
-**Ingestion.** The uploaded file is routed by extension. For PDFs, `pymupdf4llm` extracts each page as Markdown, keeping page boundaries intact, and each page is independently split with LangChain's `RecursiveCharacterTextSplitter` (1000-character chunks, 200-character overlap), so every resulting chunk still knows exactly which page it came from. For `.docx` files, `python-docx` extracts paragraph and table text (Word has no page numbers stored in the file itself — pagination is computed by the renderer — so these chunks carry no page number), and the same splitter is applied to the full text. Each chunk is embedded with `sentence-transformers/all-MiniLM-L6-v2` (384-dimensional vectors) and stored in a Postgres `chunks` table alongside its source filename, owner, and page number (when known), using `pgvector`'s HNSW index for fast approximate nearest-neighbor search.
+**Ingestion.** The uploaded file is routed by extension. For PDFs, `pymupdf4llm` extracts each page as Markdown, keeping page boundaries intact, and each page is independently split with LangChain's `RecursiveCharacterTextSplitter` (1000-character chunks, 200-character overlap), so every resulting chunk still knows exactly which page it came from. For `.docx` files, `python-docx` extracts paragraph and table text (Word has no page numbers stored in the file itself — pagination is computed by the renderer — so these chunks carry no page number), and the same splitter is applied to the full text. For `.xlsx` files, `openpyxl` reads every sheet's cells (using each formula's last-cached computed value rather than the formula string), joins each row with `|`, and prefixes each sheet with a `## Sheet: <name>` heading before the same splitter is applied — Excel has no page concept, so these chunks also carry no page number. Each chunk is embedded with `sentence-transformers/all-MiniLM-L6-v2` (384-dimensional vectors) and stored in a Postgres `chunks` table alongside its source filename, owner, and page number (when known), using `pgvector`'s HNSW index for fast approximate nearest-neighbor search.
 
 **Retrieval.** Each question goes through three stages, always scoped to the requesting user's own chunks. First, two searches run over the same chunks (optionally filtered to specific documents): a semantic search, where the question is embedded with the same model used for the documents and `pgvector`'s cosine-distance operator ranks chunks by meaning, and a keyword search, where Postgres full-text search (a generated `tsvector` column with a GIN index) ranks chunks by how many of the question's terms they contain, matching any term rather than requiring all of them. Each search returns its top `4 × k`. Second, the two ranked lists are merged with Reciprocal Rank Fusion, which scores each chunk by `1 / (60 + rank)` in every list it appears in, so chunks that both searches like rise to the top without having to compare cosine distances against full-text scores. Third, a cross-encoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`) reads the question and each merged candidate together and re-scores them, which is slower but far more accurate than comparing embeddings; the best `k` after reranking become the LLM's context. The `score` returned with each source is this reranker relevance (0–1).
 
@@ -403,7 +403,7 @@ A Vite + React 19 app that consumes the API above.
 
 - **Auth pages** — `/login` and `/register`, backed by `react-hook-form` + `zod` validation. A successful login/register stores the JWT and redirects into the app; a valid token is required to reach anything else.
 - **Chat** (`/chat`) — ask questions and watch the answer stream in token-by-token via `/api/ask/stream`, with a collapsible list of cited sources under each answer and an optional filter to scope a question to specific documents. A sidebar lists previous conversations (title, last-updated date), lets you switch between them (reloading that conversation's saved history from `GET /api/conversations/:id`), start a new one, or delete one. A new conversation is only created in the backend once you actually send a message, so browsing never leaves empty conversations behind. Switching conversations or starting a new one is disabled while a response is still streaming, since the exchange isn't saved yet.
-- **Documents** (`/documents`) — lists uploaded documents (name, chunk count, upload date) via `GET /api/documents`, and a button to upload a new PDF/DOCX.
+- **Documents** (`/documents`) — lists uploaded documents (name, chunk count, upload date) via `GET /api/documents`, and a button to upload a new PDF, DOCX, or XLSX file.
 
 **State management is split by what it represents:**
 - **Redux Toolkit** (`src/features/*/*.js`) holds client-side session state: the auth token/current user, and the active conversation's messages (including in-progress streaming tokens).
@@ -415,8 +415,11 @@ Run it with `npm run dev` (see [Frontend setup](#frontend-setup)); it expects th
 
 ## Known limitations
 
-- Legacy `.doc` files (the old binary Word format) aren't parsed — only `.docx` and PDF are supported. Convert `.doc` files to `.docx` or PDF before uploading.
-- `.docx` chunks have no page number, since Word doesn't store pagination in the file (it's computed by the renderer at display/print time). Their citations include the document name only.
+- Legacy `.doc` and `.xls` files (the old binary Word/Excel formats) aren't parsed — only `.docx`, `.xlsx`, and PDF are supported. Convert to the modern format before uploading.
+- `.docx` and `.xlsx` chunks have no page number, since neither format stores pagination in the file (it's computed by the renderer, or doesn't apply to a spreadsheet). Their citations include the document name only.
+- **Charts, graphs, and other images are not understood at all** — whether embedded in a PDF, a `.docx`, or an Excel sheet, the pipeline extracts text and table cells only. It never runs OCR or image captioning, so a chart with no underlying text/table data next to it (e.g. a screenshotted graph) is invisible to the chatbot and can't be asked about. Doing this properly would need a vision-capable model (e.g. `ollama pull llama3.2-vision` or `llava`), which isn't wired in — Excel and Word charts that mirror a worksheet/table already in the document are fine, since that underlying data is ingested even though the chart image itself isn't.
+- Formula cells in `.xlsx` files are read via their last-cached computed value, not recalculated — a workbook a script generated without ever being opened/saved in Excel or LibreOffice (so it has no cached values) will show those cells as empty.
+- The LLM (`llama3.2`, a small 3B local model by default) can misread numbers when reasoning over a table-shaped chunk — e.g. picking the wrong column for "highest Q2 spend." The correct row is retrieved and passed to it correctly (visible in the answer's sources), but arithmetic/tabular reasoning accuracy is limited by the model, not the retrieval pipeline. A larger or more capable Ollama model will do better on these questions.
 - No password reset or email verification flow — registration and login only.
 - The chat UI renders answers as plain text (no Markdown rendering), even though the LLM may format citations or lists with Markdown syntax.
 - The backend's CORS policy is hardcoded to `http://localhost:5173`; deploying the frontend elsewhere requires updating `main.py`.
