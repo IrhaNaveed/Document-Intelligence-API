@@ -253,6 +253,17 @@ curl http://localhost:8000/api/documents \
 ]
 ```
 
+### `DELETE /api/documents/{document_name}`
+
+Deletes every stored chunk for that document name under the current user (URL-encode the filename if it contains spaces or special characters).
+
+```bash
+curl -X DELETE "http://localhost:8000/api/documents/invoice.pdf" \
+  -H "Authorization: Bearer <access_token>"
+```
+
+Returns `204 No Content`, or `404` if no document with that name exists for the current user.
+
 ### `POST /api/ask`
 
 Ask a question over the indexed documents. Every question/answer exchange is saved to the given conversation — see [Conversations](#conversations) for how to create one first.
@@ -403,7 +414,7 @@ A Vite + React 19 app that consumes the API above.
 
 - **Auth pages** — `/login` and `/register`, backed by `react-hook-form` + `zod` validation. A successful login/register stores the JWT and redirects into the app; a valid token is required to reach anything else.
 - **Chat** (`/chat`) — ask questions and watch the answer stream in token-by-token via `/api/ask/stream`, with a collapsible list of cited sources under each answer and an optional filter to scope a question to specific documents. A sidebar lists previous conversations (title, last-updated date), lets you switch between them (reloading that conversation's saved history from `GET /api/conversations/:id`), start a new one, or delete one. A new conversation is only created in the backend once you actually send a message, so browsing never leaves empty conversations behind. Switching conversations or starting a new one is disabled while a response is still streaming, since the exchange isn't saved yet.
-- **Documents** (`/documents`) — lists uploaded documents (name, chunk count, upload date) via `GET /api/documents`, and a button to upload a new PDF, DOCX, or XLSX file.
+- **Documents** (`/documents`) — lists uploaded documents (name, chunk count, upload date) via `GET /api/documents`, a button to upload a new PDF, DOCX, or XLSX file, and a delete button (revealed on hover) that removes a document and all of its chunks via `DELETE /api/documents/{document_name}`.
 
 **State management is split by what it represents:**
 - **Redux Toolkit** (`src/features/*/*.js`) holds client-side session state: the auth token/current user, and the active conversation's messages (including in-progress streaming tokens).

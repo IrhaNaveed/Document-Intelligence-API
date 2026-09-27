@@ -1,11 +1,11 @@
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, UploadFile, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, HTTPException, Depends, status
 from fastapi.responses import StreamingResponse
 from httpx import ConnectError
 from ollama import ResponseError
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
@@ -106,6 +106,22 @@ async def list_documents(
         )
         for row in rows
     ]
+
+
+@router.delete("/documents/{document_name}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(
+    document_name: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    result = await session.execute(
+        delete(Chunk).where(
+            Chunk.document_name == document_name, Chunk.owner_id == current_user.id
+        )
+    )
+    await session.commit()
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Document not found")
 
 
 @router.post("/ask", response_model=AskResponse)

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { fetchDocuments, uploadDocument } from '../../api/documentsApi'
+import { deleteDocument, fetchDocuments, uploadDocument } from '../../api/documentsApi'
 
 export const DOCUMENTS_QUERY_KEY = ['documents']
 
@@ -17,6 +17,17 @@ export function useUploadDocument() {
 
   return useMutation({
     mutationFn: uploadDocument,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: DOCUMENTS_QUERY_KEY })
+    },
+  })
+}
+
+export function useDeleteDocument() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: deleteDocument,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: DOCUMENTS_QUERY_KEY })
     },

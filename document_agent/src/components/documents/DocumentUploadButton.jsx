@@ -29,7 +29,7 @@ export default function DocumentUploadButton() {
   }
 
   return (
-    <div className="flex flex-col items-end gap-2">
+    <div className="flex shrink-0 flex-col items-end gap-2">
       <input
         ref={inputRef}
         type="file"
@@ -41,7 +41,7 @@ export default function DocumentUploadButton() {
         type="button"
         onClick={() => inputRef.current?.click()}
         disabled={uploadMutation.isPending}
-        className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {uploadMutation.isPending ? (
           <Loader2 className="h-4 w-4 animate-spin" />

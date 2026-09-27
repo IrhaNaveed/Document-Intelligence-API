@@ -14,3 +14,7 @@ export async function uploadDocument(file) {
   })
   return data
 }
+
+export async function deleteDocument(documentName) {
+  await axiosClient.delete(`/api/documents/${encodeURIComponent(documentName)}`)
+}
