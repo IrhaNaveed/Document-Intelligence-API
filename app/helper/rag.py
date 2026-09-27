@@ -24,9 +24,18 @@ prompt = ChatPromptTemplate.from_messages([
         "system",
         "You answer questions using only the provided context. "
         "Each context block is labelled with its source as [document, page N]. "
+        "The context blocks may come from different, unrelated documents, and "
+        "not every block will be relevant to the question — that is normal. "
+        "Read all of them, ignore the ones that don't help, and base your answer "
+        "on whichever blocks do address the question, even if it's only one. "
+        "When the context lists several entries with date ranges (e.g. roles, "
+        "versions, events) and the question asks about the current, latest, or "
+        "most recent one, compare the dates and pick the entry whose range is "
+        "open-ended (e.g. says 'Present') or has the latest end date — do not "
+        "default to whichever entry appears first in the context. "
         "Cite the sources you used in the answer in that same format. "
-        "If the context does not contain the answer, say you could not find it "
-        "in the documents. Do not use outside knowledge.",
+        "Only say you could not find the answer if none of the context blocks "
+        "address the question at all. Do not use outside knowledge.",
     ),
     ("human", "Context:\n{context}\n\nQuestion: {question}"),
 ])
