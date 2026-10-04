@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Computed, DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import Boolean, Computed, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -25,6 +25,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -102,6 +103,10 @@ async def init_db() -> None:
         await conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_chunks_content_tsv "
             "ON chunks USING gin (content_tsv)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password "
+            "BOOLEAN NOT NULL DEFAULT false"
         ))
         await conn.execute(text(
             "ALTER TABLE chunks ADD COLUMN IF NOT EXISTS owner_id INTEGER REFERENCES users(id)"

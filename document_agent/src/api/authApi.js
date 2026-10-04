@@ -20,3 +20,15 @@ export async function fetchCurrentUser() {
   const { data } = await axiosClient.get('/api/auth/me')
   return data
 }
+
+export async function forgotPasswordRequest({ email }) {
+  const { data } = await axiosClient.post('/api/auth/forgot-password', { email })
+  return data
+}
+
+export async function changePasswordRequest({ newPassword }) {
+  const { data } = await axiosClient.post('/api/auth/change-password', {
+    new_password: newPassword,
+  })
+  return data
+}
