@@ -30,7 +30,11 @@ export default function LoginPage() {
 
   const onSubmit = (values) => {
     loginMutation.mutate(values, {
-      onSuccess: () => {
+      onSuccess: (data) => {
+        if (data.must_change_password) {
+          navigate('/change-password', { replace: true })
+          return
+        }
         const redirectTo = location.state?.from?.pathname ?? '/'
         navigate(redirectTo, { replace: true })
       },
@@ -59,6 +63,12 @@ export default function LoginPage() {
           error={errors.password?.message}
           {...register('password')}
         />
+
+        <div className="-mt-2 text-right">
+          <Link to="/forgot-password" className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">
+            Forgot password?
+          </Link>
+        </div>
 
         {loginMutation.isError ? (
           <p className="rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-400">

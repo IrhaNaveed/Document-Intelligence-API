@@ -2,7 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 
-import { fetchCurrentUser, loginRequest, registerRequest } from '../../api/authApi'
+import {
+  changePasswordRequest,
+  fetchCurrentUser,
+  forgotPasswordRequest,
+  loginRequest,
+  registerRequest,
+} from '../../api/authApi'
 import { chatCleared } from '../chat/chatSlice'
 import { logout, selectAuthToken, setCredentials, setUser } from './authSlice'
 
@@ -19,7 +25,10 @@ export function useLogin() {
   return useMutation({
     mutationFn: loginRequest,
     onSuccess: (data) => {
-      dispatch(setCredentials({ token: data.access_token }))
+      dispatch(setCredentials({
+          token: data.access_token,
+          mustChangePassword: data.must_change_password,
+        }))
       queryClient.invalidateQueries({ queryKey: ['currentUser'] })
     },
   })
@@ -61,4 +70,16 @@ export function useLogout() {
     dispatch(chatCleared())
     queryClient.clear()
   }
+}
+
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: forgotPasswordRequest,
+  })
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: changePasswordRequest,
+  })
 }
